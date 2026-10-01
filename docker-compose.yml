@@ -1,0 +1,3 @@
+name: ${COMPOSE_PROJECT_NAME:-conjur-sandbox-lab}
+include:
+  - path: ./conjur-sandbox-lab/docker-compose.yml

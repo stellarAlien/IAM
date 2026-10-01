@@ -1,0 +1,13 @@
+{
+  "human": {"id": "human/alice", "team": "payments", "tenant": "acme", "environment": "dev"},
+  "agents": [
+    {"id": "agent/payment-reconciliation", "team": "payments", "tenant": "acme", "environment": "dev"},
+    {"id": "agent/reconciliation-worker", "team": "payments", "tenant": "acme", "environment": "dev"},
+    {"id": "agent/observer", "team": "audit", "tenant": "globex", "environment": "dev"}
+  ],
+  "tools": {
+    "payment-db": {"tenant": "acme", "environment": "dev", "team": "payments", "action": "read", "secret": "agent-lab/acme/dev/payment-db/credential", "host": "host/agent-lab/payment-db"},
+    "stripe-reconcile": {"tenant": "acme", "environment": "dev", "team": "payments", "action": "read", "secret": "agent-lab/acme/dev/stripe-reconcile/credential", "host": "host/agent-lab/stripe-reconcile"},
+    "production-admin": {"tenant": "acme", "environment": "prod", "team": "platform", "action": "admin", "secret": null, "host": null}
+  }
+}

@@ -1,0 +1,6 @@
+- !revoke
+  role: !group /lab/checkout-readers
+  member: !user /lab-eve
+- !revoke
+  role: !group /lab/exercise/contractors
+  member: !user /lab-eve

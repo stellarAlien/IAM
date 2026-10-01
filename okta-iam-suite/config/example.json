@@ -1,0 +1,7 @@
+{
+  "org_url": "https://integrator-YOUR_ORG.okta.com",
+  "issuer": "https://integrator-YOUR_ORG.okta.com/oauth2/default",
+  "client_id": "YOUR_NATIVE_APP_CLIENT_ID",
+  "audience": "api://iam-lab",
+  "api_origin": "http://127.0.0.1:8090"
+}

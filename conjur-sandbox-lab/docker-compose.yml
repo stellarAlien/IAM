@@ -1,0 +1,283 @@
+name: ${COMPOSE_PROJECT_NAME:-conjur-sandbox-lab}
+
+x-app: &app
+  image: conjur-sandbox-app:local
+  build: ./app
+  profiles: [workloads]
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: [/tmp:size=16m,mode=1777]
+  networks: [workloads]
+  depends_on:
+    proxy:
+      condition: service_healthy
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+
+x-client-env: &client-env
+  CONJUR_APPLIANCE_URL: https://proxy
+  CONJUR_ACCOUNT: ${CONJUR_ACCOUNT:-sandbox}
+  CONJUR_CERT_FILE: /run/secrets/tls_cert
+
+x-message: &message
+  <<: *app
+  profiles: [tenants]
+  command: [python, -B, message.py]
+  mem_limit: 128m
+  cpus: 0.5
+  pids_limit: 64
+
+services:
+  database:
+    image: ${POSTGRES_IMAGE:-postgres:15.18-bookworm}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: conjur
+      POSTGRES_USER: conjur
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U conjur -d conjur]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    security_opt: [no-new-privileges:true]
+
+  conjur:
+    image: ${CONJUR_IMAGE:-cyberark/conjur:latest}
+    restart: unless-stopped
+    entrypoint: [bash, /opt/lab/conjur-entrypoint.sh]
+    command: [server]
+    environment:
+      CONJUR_ACCOUNT: ${CONJUR_ACCOUNT:-sandbox}
+      CONJUR_AUTHENTICATORS: authn
+      CONJUR_TELEMETRY_ENABLED: 'false'
+    secrets: [db_password, data_key]
+    volumes:
+      - ./scripts/conjur-entrypoint.sh:/opt/lab/conjur-entrypoint.sh:ro
+    networks: [database, backend]
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, ruby, -rnet/http, -e, "exit(Net::HTTP.get_response(URI('http://127.0.0.1/health')).code == '200' ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    security_opt: [no-new-privileges:true]
+
+  proxy:
+    image: ${NGINX_IMAGE:-nginx:1.28-alpine}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/var/cache/nginx, /var/run, /tmp]
+    ports: ['127.0.0.1:${CONJUR_HTTPS_PORT:-8443}:443']
+    secrets: [tls_cert, tls_key]
+    volumes: [./config/nginx.conf:/etc/nginx/nginx.conf:ro]
+    networks: [backend, workloads, acme-dev, acme-prod, globex-dev, globex-prod]
+    depends_on:
+      conjur:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --show-error, --cacert, /run/secrets/tls_cert, https://proxy/health]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  client:
+    image: ${CONJUR_CLI_IMAGE:-cyberark/conjur-cli:9}
+    profiles: [tools]
+    user: '0:0'
+    entrypoint: [bash, /opt/lab/client-entrypoint.sh]
+    command: [whoami]
+    environment:
+      <<: *client-env
+      CONJUR_AUTHN_LOGIN: admin
+    secrets: [tls_cert, admin_api_key]
+    volumes:
+      - ./scripts/client-entrypoint.sh:/opt/lab/client-entrypoint.sh:ro
+      - ./policy:/policy:ro
+    networks: [workloads]
+    security_opt: [no-new-privileges:true]
+
+  manager:
+    image: conjur-sandbox-app:local
+    build: ./app
+    profiles: [tools]
+    user: '${LOCAL_UID:-1000}:${LOCAL_GID:-1000}'
+    entrypoint: [python, /tools/manage.py]
+    environment:
+      <<: *client-env
+    volumes:
+      - ./.runtime:/runtime
+      - ./policy:/policy:ro
+      - ./scripts:/tools:ro
+      - ./config/tenants.json:/config/tenants.json:ro
+    secrets: [tls_cert]
+    networks: [workloads, acme-dev, acme-prod, globex-dev, globex-prod]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  actor:
+    image: conjur-sandbox-app:local
+    profiles: [exercise]
+    entrypoint: [python, /tools/exercise.py, actor]
+    command: [canary]
+    environment:
+      <<: *client-env
+      EXERCISE_ACTOR: ${EXERCISE_ACTOR:-eve}
+    secrets:
+      - tls_cert
+      - source: actor_api_key
+        target: actor_api_key
+    volumes:
+      - ./scripts/manage.py:/tools/manage.py:ro
+      - ./scripts/exercise.py:/tools/exercise.py:ro
+    networks: [workloads]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  checkout:
+    <<: *app
+    environment:
+      <<: *client-env
+      WORKLOAD: checkout
+      CONJUR_AUTHN_LOGIN: host/lab/checkout
+      CONJUR_AUTHN_API_KEY_FILE: /run/secrets/host_api_key
+    secrets:
+      - tls_cert
+      - source: checkout_api_key
+        target: host_api_key
+    ports: ['127.0.0.1:${CHECKOUT_PORT:-8081}:8080']
+
+  fraud:
+    <<: *app
+    environment:
+      <<: *client-env
+      WORKLOAD: fraud
+      CONJUR_AUTHN_LOGIN: host/lab/fraud
+      CONJUR_AUTHN_API_KEY_FILE: /run/secrets/host_api_key
+    secrets:
+      - tls_cert
+      - source: fraud_api_key
+        target: host_api_key
+    ports: ['127.0.0.1:${FRAUD_PORT:-8082}:8080']
+
+  tenant-gateway:
+    image: ${NGINX_IMAGE:-nginx:1.28-alpine}
+    profiles: [tenants]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/var/cache/nginx, /var/run, /tmp]
+    ports: ['127.0.0.1:8444:443']
+    secrets: [tls_cert, tls_key]
+    volumes: [./config/tenant-nginx.conf:/etc/nginx/nginx.conf:ro]
+    networks: [tenant-edge, acme-dev, acme-prod, globex-dev, globex-prod]
+    depends_on:
+      acme-dev: {condition: service_healthy}
+      acme-prod: {condition: service_healthy}
+      globex-dev: {condition: service_healthy}
+      globex-prod: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --cacert, /run/secrets/tls_cert, https://localhost/healthz]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  acme-dev:
+    <<: *message
+    environment:
+      <<: *client-env
+      TENANT: acme
+      ENVIRONMENT: dev
+      CONJUR_AUTHN_LOGIN: host/tenants/acme/dev/api
+      CONJUR_AUTHN_API_KEY_FILE: /run/secrets/host_api_key
+    secrets: [tls_cert, {source: acme_dev_api_key, target: host_api_key}]
+    networks: [acme-dev]
+  acme-prod:
+    <<: *message
+    environment:
+      <<: *client-env
+      TENANT: acme
+      ENVIRONMENT: prod
+      CONJUR_AUTHN_LOGIN: host/tenants/acme/prod/api
+      CONJUR_AUTHN_API_KEY_FILE: /run/secrets/host_api_key
+    secrets: [tls_cert, {source: acme_prod_api_key, target: host_api_key}]
+    networks: [acme-prod]
+  globex-dev:
+    <<: *message
+    environment:
+      <<: *client-env
+      TENANT: globex
+      ENVIRONMENT: dev
+      CONJUR_AUTHN_LOGIN: host/tenants/globex/dev/api
+      CONJUR_AUTHN_API_KEY_FILE: /run/secrets/host_api_key
+    secrets: [tls_cert, {source: globex_dev_api_key, target: host_api_key}]
+    networks: [globex-dev]
+  globex-prod:
+    <<: *message
+    environment:
+      <<: *client-env
+      TENANT: globex
+      ENVIRONMENT: prod
+      CONJUR_AUTHN_LOGIN: host/tenants/globex/prod/api
+      CONJUR_AUTHN_API_KEY_FILE: /run/secrets/host_api_key
+    secrets: [tls_cert, {source: globex_prod_api_key, target: host_api_key}]
+    networks: [globex-prod]
+
+volumes:
+  postgres_data:
+
+networks:
+  database:
+    internal: true
+  backend:
+    internal: true
+  workloads:
+  tenant-edge:
+  acme-dev: {internal: true}
+  acme-prod: {internal: true}
+  globex-dev: {internal: true}
+  globex-prod: {internal: true}
+
+secrets:
+  db_password:
+    file: ./.runtime/db_password
+  data_key:
+    file: ./.runtime/data_key
+  tls_cert:
+    file: ./.runtime/tls.crt
+  tls_key:
+    file: ./.runtime/tls.key
+  admin_api_key:
+    file: ./.runtime/admin_api_key
+  checkout_api_key:
+    file: ./.runtime/checkout_api_key
+  fraud_api_key:
+    file: ./.runtime/fraud_api_key
+  actor_api_key:
+    file: ./.runtime/${EXERCISE_ACTOR:-eve}_api_key
+  acme_dev_api_key:
+    file: ./.runtime/acme_dev_api_key
+  acme_prod_api_key:
+    file: ./.runtime/acme_prod_api_key
+  globex_dev_api_key:
+    file: ./.runtime/globex_dev_api_key
+  globex_prod_api_key:
+    file: ./.runtime/globex_prod_api_key

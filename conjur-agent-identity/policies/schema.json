@@ -1,0 +1,60 @@
+{
+  "": {
+    "entityTypes": {
+      "Agent": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "team": { "type": "String" },
+            "tenant": { "type": "String" },
+            "environment": { "type": "String" }
+          }
+        }
+      },
+      "Tool": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "team": { "type": "String" },
+            "tenant": { "type": "String" },
+            "environment": { "type": "String" },
+            "sensitive": { "type": "Boolean" },
+            "blocked": { "type": "Boolean" }
+          }
+        }
+      }
+    },
+    "actions": {
+      "read": {
+        "appliesTo": {
+          "principalTypes": ["Agent"],
+          "resourceTypes": ["Tool"],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "delegationValid": { "type": "Boolean" },
+              "records": { "type": "Long" },
+              "tenant": { "type": "String" },
+              "environment": { "type": "String" }
+            }
+          }
+        }
+      },
+      "admin": {
+        "appliesTo": {
+          "principalTypes": ["Agent"],
+          "resourceTypes": ["Tool"],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "delegationValid": { "type": "Boolean" },
+              "records": { "type": "Long" },
+              "tenant": { "type": "String" },
+              "environment": { "type": "String" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

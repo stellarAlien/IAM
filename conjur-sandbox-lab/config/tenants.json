@@ -1,0 +1,4 @@
+{
+  "tenants": ["acme", "globex"],
+  "environments": ["dev", "prod"]
+}

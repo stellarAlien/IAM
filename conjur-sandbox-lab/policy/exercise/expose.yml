@@ -1,0 +1,3 @@
+- !grant
+  role: !group /lab/checkout-readers
+  member: !user /lab-eve

@@ -1,0 +1,16 @@
+- !host
+  id: checkout
+  annotations:
+    description: Payment authorization workload
+- !host
+  id: fraud
+  annotations:
+    description: Fraud scoring workload
+- !group checkout-readers
+- !group fraud-readers
+- !grant
+  role: !group checkout-readers
+  member: !host checkout
+- !grant
+  role: !group fraud-readers
+  member: !host fraud

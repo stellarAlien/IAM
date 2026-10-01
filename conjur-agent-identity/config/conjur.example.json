@@ -1,0 +1,5 @@
+{
+  "url": "https://localhost:8443",
+  "account": "sandbox",
+  "ca_file": "../conjur-sandbox-lab/.runtime/tls.crt"
+}

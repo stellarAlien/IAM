@@ -1,0 +1,54 @@
+- !policy
+  id: tenants
+  body:
+    - !policy
+      id: acme
+      body:
+        - !policy
+          id: dev
+          body: &environment
+            - !host api
+            - !group api-readers
+            - !group callers
+            - !group secret-operators
+            - !group reviewers
+            - !host sender
+            - !grant
+              role: !group api-readers
+              member: !host api
+            - !grant
+              role: !group callers
+              member: !host sender
+            - !policy
+              id: secrets
+              body:
+                - !variable ingress-token
+                - !variable signing-key
+            - !permit
+              role: !group api-readers
+              privileges: [read, execute]
+              resources: [!variable secrets/ingress-token, !variable secrets/signing-key]
+            - !permit
+              role: !group callers
+              privileges: [read, execute]
+              resource: !variable secrets/ingress-token
+            - !permit
+              role: !group reviewers
+              privileges: [read]
+              resources: [!variable secrets/ingress-token, !variable secrets/signing-key]
+            - !permit
+              role: !group secret-operators
+              privileges: [read, execute, update]
+              resources: [!variable secrets/ingress-token, !variable secrets/signing-key]
+        - !policy
+          id: prod
+          body: *environment
+    - !policy
+      id: globex
+      body:
+        - !policy
+          id: dev
+          body: *environment
+        - !policy
+          id: prod
+          body: *environment

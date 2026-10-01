@@ -1,0 +1,45 @@
+# Declaration IDs are relative to their Conjur resource kind.
+- !host
+  id: payments-agent
+- !host
+  id: settlement-agent
+- !user
+  id: auditor
+- !group
+  id: payment-readers
+- !layer
+  id: payment-systems
+- !layer
+  id: finance
+- !group
+  id: settlement-readers
+- !variable
+  id: payments/db/credentials
+- !variable
+  id: payments/stripe/credential
+- !variable
+  id: production/admin/credential
+- !grant
+  role: !group payment-readers
+  members:
+    - !host payments-agent
+    - !user auditor
+- !grant
+  role: !layer payment-systems
+  member: !group payment-readers
+- !grant
+  role: !layer finance
+  member: !layer payment-systems
+- !grant
+  role: !group settlement-readers
+  member: !host settlement-agent
+- !permit
+  role: !layer finance
+  privileges: [read]
+  resources:
+    - !variable payments/db/credentials
+    - !variable payments/stripe/credential
+- !permit
+  role: !host payments-agent
+  privileges: [execute]
+  resource: !variable payments/db/credentials

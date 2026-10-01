@@ -1,0 +1,16 @@
+- !policy
+  id: agent-lab
+  body:
+    - !host payment-db
+    - !host stripe-reconcile
+    - !variable acme/dev/payment-db/credential
+    - !variable acme/dev/stripe-reconcile/credential
+    - !variable acme/prod/admin/credential
+    - !permit
+      role: !host payment-db
+      privileges: [read, execute]
+      resource: !variable acme/dev/payment-db/credential
+    - !permit
+      role: !host stripe-reconcile
+      privileges: [read, execute]
+      resource: !variable acme/dev/stripe-reconcile/credential

@@ -1,0 +1,43 @@
+- !user
+  id: lab-alice
+  annotations:
+    description: Security reviewer; metadata only
+- !user
+  id: lab-bob
+  annotations:
+    description: Payment operator; no policy administration
+- !user
+  id: lab-eve
+  annotations:
+    description: Simulated compromised contractor; synthetic canary only
+- !policy
+  id: lab
+  body:
+    - !policy
+      id: exercise
+      body:
+        - !group reviewers
+        - !group payment-operators
+        - !group contractors
+        - !variable canary
+        - !grant
+          role: !group reviewers
+          member: !user /lab-alice
+        - !grant
+          role: !group payment-operators
+          member: !user /lab-bob
+        - !grant
+          role: !group contractors
+          member: !user /lab-eve
+        - !permit
+          role: !group reviewers
+          privileges: [read]
+          resources: [!variable /lab/secrets/payment-api-key, !variable /lab/secrets/fraud-model-key, !variable canary]
+        - !permit
+          role: !group payment-operators
+          privileges: [read, execute, update]
+          resource: !variable /lab/secrets/payment-api-key
+        - !permit
+          role: !group contractors
+          privileges: [read, execute]
+          resource: !variable canary
